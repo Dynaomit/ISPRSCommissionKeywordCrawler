@@ -45,7 +45,7 @@ def find_year_in_string(text):
     processed_string = re.sub('\s+', ' ', text).strip().lstrip()
     matches = re.findall(r'\d{4}', processed_string)
     if len(matches) != 0:
-        #test = match.group(1)
+        # test = match.group(1)
         return matches[0]
     else:
         return None
@@ -83,17 +83,40 @@ def plot_keywords(keyword_dict, top_n):
     df_test.plot(kind='bar', stacked=True)
     plt.xticks(rotation=45, ha='right', rotation_mode='anchor', fontsize=4)
     plt.yticks(fontsize=7)
-    #plt.yticks(new_list)
+    # plt.yticks(new_list)
     plt.tight_layout()
     plt.savefig('Top{} Keywords'.format(top_n), dpi=500)
     plt.show()
+
+
+def sync_counts(k1, k2):
+    for key in k2.keys():
+        if key not in k1.keys():
+            k1[key] = k2[key]
+        else:
+            k1[key] += k2[key]
+    return k1
+
+
+def process_duplicates(keyword_dict):
+    keys_to_delete = []
+    for i, key in enumerate(keyword_dict.keys()):
+        for j, other_key in enumerate(keyword_dict.keys()):
+            if i != j and other_key in key:
+                keyword_dict[key] = sync_counts(keyword_dict[key], keyword_dict[other_key])
+                keys_to_delete.append(other_key)
+    for key_to_delete in list(dict.fromkeys(keys_to_delete)):
+        keyword_dict.pop(key_to_delete)
+    return keyword_dict
 
 
 def main():
     commission_links = get_commission_links()
     index_links = get_index_links_from_commission_links(commission_links)
     keyword_dict = get_keywords_and_counts_basic(index_links)
-    plot_keywords(keyword_dict, 80)
+    #no_duplicate_dict = process_duplicates(keyword_dict)
+    print(len(keyword_dict.keys()))
+    plot_keywords(keyword_dict, 40)
 
 
 if __name__ == '__main__':
