@@ -1,16 +1,13 @@
-import itertools
-import math
 import re
 
 import matplotlib.style
-import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
 import httplib2
 import matplotlib.pyplot as plt
-import difflib
 from collections import Counter
 from Levenshtein import ratio as levenshtein_distance
+import plotly.express as px
 
 
 def request_website(link_string):
@@ -20,6 +17,10 @@ def request_website(link_string):
 
 
 def get_commission_links():
+    """
+    searches the isprs annals website for commissions and collects their links
+    :return: list of links to commissions
+    """
     links = []
     response = request_website("https://www.isprs.org/publications/annals.aspx")
     for link in BeautifulSoup(response, features="html.parser").find_all('a'):
@@ -35,6 +36,11 @@ def get_commission_links():
 
 
 def get_index_links_from_commission_links(commission_links):
+    """
+    from a list of links, which refer to commissions, parse the given websites for the link to each commission's keyword index
+    :param commission_links: list of links to commissions
+    :return: list of links to keyword indexes
+    """
     index_links = []
     for commission_link in commission_links:
         response = request_website(commission_link)
@@ -46,6 +52,11 @@ def get_index_links_from_commission_links(commission_links):
 
 
 def find_year_in_string(text):
+    """
+    for a given text, represented by a string, return the first found year mentioned in said string
+    :param text: large string to be searched
+    :return: first found year, None if no year is found
+    """
     processed_string = re.sub('\s+', ' ', text).strip().lstrip()
     matches = re.findall(r'\d{4}', processed_string)
     if len(matches) != 0:
@@ -56,12 +67,21 @@ def find_year_in_string(text):
 
 
 def get_keywords_and_counts_basic(index_links):
+    """
+    from a given list of links referring to keyword indexes,
+    parses the keywords and counts how many papers mention each keyword
+    the keywords are collected in a dictionary as keys to prevent duplicates
+    :param index_links: given list of links to keyword indexes
+    :return: dictionary with keywords as keys and amounts as values, amounts are seperated into each commission's year
+    """
     keywords = dict()
     current_keyword = ""
     for index_link in index_links:
         response = request_website(index_link)
         soup = BeautifulSoup(response, features="html.parser")
         current_year = find_year_in_string(soup.text)
+        if current_year is None:
+            current_year = "unavailable"
         mydivs = soup.find_all("div", {"class": "indexData"})
         for div in mydivs:
             for content in div.contents:
@@ -79,18 +99,27 @@ def get_keywords_and_counts_basic(index_links):
 
 
 def plot_keywords(keyword_dict, top_n):
+    pd.options.plotting.backend = "plotly"
     matplotlib.style.use('tableau-colorblind10')
     top = dict(sorted(keyword_dict.items(), key=lambda x: sum(x[1].values()), reverse=True)[:top_n])
     df = pd.DataFrame(top).transpose()
     df = df.iloc[:, ::-1]
     df.sort_index(axis=0, ascending=False)
-    df.plot(kind='bar', stacked=True)
-    plt.xticks(rotation=45, ha='right', rotation_mode='anchor', fontsize=4)
-    plt.yticks(fontsize=7)
+    fig = df.plot(kind='bar')#, stacked=True)
+    fig.update_layout(
+        title="Top {} keywords".format(top_n),
+        xaxis_title="Keyword",
+        yaxis_title="Amount mentioned",
+        legend_title="Commission Years"
+    )
+    fig.show()
+    fig.write_html("top{}keywords_plotly".format(top_n))
+    #plt.xticks(rotation=45, ha='right', rotation_mode='anchor', fontsize=4)
+    #plt.yticks(fontsize=7)
     # plt.yticks(new_list)
-    plt.tight_layout()
-    plt.savefig('Top{} Keywords'.format(top_n), dpi=500)
-    plt.show()
+    #plt.tight_layout()
+    #plt.savefig('Top{} Keywords'.format(top_n), dpi=500)
+    #plt.show()
 
 
 def sync_counts(k1, k2):
@@ -103,41 +132,41 @@ def sync_counts(k1, k2):
 
 
 def get_overlap(s1, s2):
+    """
+    calculates the overlap of two strings on a character level, ignores dashes and spaces
+    :param s1: first string
+    :param s2: second string
+    :return: the overlapping
+    """
     string_list_1 = s1.replace('-', ' ').split(' ')
     string_list_2 = s2.replace('-', ' ').split(' ')
     return list(set(string_list_1).intersection(string_list_2))
 
 
-def analyze_keys(keyword_dict):
-    important_keys = dict()
+def group_keys(keyword_dict):
+    """
+    this method groups the keys of a given dictionary by their similarity measured with the levenshtein ratio
+    since this method uses simple lists, the performance is not the greatest
+    :param keyword_dict: given dictionary
+    :return: returns a list of lists, the latter contain a group of keywords
+    """
     import time
-    for first_key, second_key in itertools.permutations(keyword_dict.keys(), 2):
-        #start_calc = time.time()
-        dist = levenshtein_distance(first_key, second_key)
-        #end_calc = time.time()
-        #start_append = time.time()
-        if first_key != second_key and dist > 0.8:
-            overlap = get_overlap(first_key, second_key)
-            if overlap:
-                overlap_string = ' '.join(overlap)
-                if overlap_string in important_keys:
-                    important_keys[overlap_string].append(first_key)
-                    important_keys[overlap_string].append(second_key)
-                else:
-                    important_keys[overlap_string] = [first_key, second_key]
-        #end_append = time.time()
-        #print("Calc time = ", end_calc-start_calc, " Append time = ", end_append-start_append)
-    for key in important_keys:
-        important_keys[key] = list(dict.fromkeys(important_keys[key]))
-    return important_keys
+    groups = list()
+    for first_key in keyword_dict.keys():
+        for group in groups:
+            if all(levenshtein_distance(first_key, w) > 0.8 for w in group):
+                group.append(first_key)
+                break
+        else:
+            groups.append([first_key, ])
+    return groups
 
 
 def process_duplicates(keyword_dict):
-    important_keys = analyze_keys(keyword_dict)
     keys_to_delete = []
     for i, key in enumerate(keyword_dict.keys()):
         for j, other_key in enumerate(keyword_dict.keys()):
-            dist = levenshtein_ratio_and_distance(key, other_key, ratio_calc=True)
+            dist = 0  # levenshtein_ratio_and_distance(key, other_key, ratio_calc=True)
             if i != j and dist > 0.8:
                 overlap = get_overlap(key, other_key).strip()
                 if overlap != key and overlap != other_key and overlap in keyword_dict.keys():
@@ -157,59 +186,30 @@ def process_duplicates(keyword_dict):
     return keyword_dict
 
 
-def levenshtein_ratio_and_distance(s, t, ratio_calc=False):
-    """ levenshtein_ratio_and_distance:
-        Calculates levenshtein distance between two strings.
-        If ratio_calc = True, the function computes the
-        levenshtein distance ratio of similarity between two strings
-        For all i and j, distance[i,j] will contain the Levenshtein
-        distance between the first i characters of s and the
-        first j characters of t
-    """
-    # Initialize matrix of zeros
-    rows = len(s) + 1
-    cols = len(t) + 1
-    distance = np.zeros((rows, cols), dtype=int)
-
-    # Populate matrix of zeros with the indeces of each character of both strings
-    for i in range(1, rows):
-        for k in range(1, cols):
-            distance[i][0] = i
-            distance[0][k] = k
-
-    # Iterate over the matrix to compute the cost of deletions,insertions and/or substitutions
-    for col in range(1, cols):
-        for row in range(1, rows):
-            if s[row - 1] == t[col - 1]:
-                cost = 0  # If the characters are the same in the two strings in a given position [i,j] then the cost is 0
+def calculate_grouped_amounts(keyword_dict, grouped_keywords):
+    group_dict = dict()
+    for group in grouped_keywords:
+        for keyword in group:
+            amounts = keyword_dict[keyword]
+            if str(group) not in group_dict.keys():
+                group_dict[str(group)] = amounts
             else:
-                # In order to align the results with those of the Python Levenshtein package, if we choose to calculate the ratio
-                # the cost of a substitution is 2. If we calculate just distance, then the cost of a substitution is 1.
-                if ratio_calc == True:
-                    cost = 2
-                else:
-                    cost = 1
-            distance[row][col] = min(distance[row - 1][col] + 1,  # Cost of deletions
-                                     distance[row][col - 1] + 1,  # Cost of insertions
-                                     distance[row - 1][col - 1] + cost)  # Cost of substitutions
-    if ratio_calc:
-        # Computation of the Levenshtein Distance Ratio
-        ratio = ((len(s) + len(t)) - distance[row][col]) / (len(s) + len(t))
-        return ratio
-    else:
-        # print(distance) # Uncomment if you want to see the matrix showing how the algorithm computes the cost of deletions,
-        # insertions and/or substitutions
-        # This is the minimum number of edits needed to convert string a to string b
-        return "The strings are {} edits away".format(distance[row][col])
+                for year in amounts.keys():
+                    if year not in group_dict[str(group)].keys():
+                        group_dict[str(group)][year] = amounts[year]
+                    else:
+                        group_dict[str(group)][year] += amounts[year]
+    return group_dict
 
 
 def main():
     commission_links = get_commission_links()
     index_links = get_index_links_from_commission_links(commission_links)
     keyword_dict = get_keywords_and_counts_basic(index_links)
-    no_duplicate_dict = process_duplicates(keyword_dict)
-    print(len(keyword_dict.keys()))
-    plot_keywords(keyword_dict, 40)
+    grouped_keywords = group_keys(keyword_dict)
+    grouped_keyword_dict = calculate_grouped_amounts(keyword_dict, grouped_keywords)
+    print("Keys saved by grouping: ", len(keyword_dict.keys()) - len(grouped_keyword_dict.keys()))
+    plot_keywords(grouped_keyword_dict, 30)
 
 
 if __name__ == '__main__':
