@@ -1,4 +1,5 @@
 import re
+from copy import copy
 
 import matplotlib.style
 import pandas as pd
@@ -102,6 +103,10 @@ def plot_keywords(keyword_dict, top_n):
     pd.options.plotting.backend = "plotly"
     matplotlib.style.use('tableau-colorblind10')
     top = dict(sorted(keyword_dict.items(), key=lambda x: sum(x[1].values()), reverse=True)[:top_n])
+    for key in list(top.keys()):
+        new_key = key.strip('][').split(', ')[0].strip('\'')
+        top[new_key] = top[key]
+        del top[key]
     df = pd.DataFrame(top).transpose()
     df = df.iloc[:, ::-1]
     df.sort_index(axis=0, ascending=False)
@@ -113,7 +118,7 @@ def plot_keywords(keyword_dict, top_n):
         legend_title="Commission Years"
     )
     fig.show()
-    fig.write_html("top{}keywords_plotly".format(top_n))
+    fig.write_html("top{}keywords_plotly.html".format(top_n))
     #plt.xticks(rotation=45, ha='right', rotation_mode='anchor', fontsize=4)
     #plt.yticks(fontsize=7)
     # plt.yticks(new_list)
