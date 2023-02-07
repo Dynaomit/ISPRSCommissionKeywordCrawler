@@ -103,6 +103,9 @@ def plot_keywords(keyword_dict, top_n):
     pd.options.plotting.backend = "plotly"
     matplotlib.style.use('tableau-colorblind10')
     top = dict(sorted(keyword_dict.items(), key=lambda x: sum(x[1].values()), reverse=True)[:top_n])
+    with open(r'./keywords.txt', 'w') as fp:
+        for key in top.keys():
+            fp.write("%s\n" % key)
     for key in list(top.keys()):
         new_key = key.strip('][').split(', ')[0].strip('\'')
         top[new_key] = top[key]
