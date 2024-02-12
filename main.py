@@ -76,16 +76,13 @@ keyword_mapping = {}
 def get_umbrella_term(keyword):
     global keyword_mapping
 
-    # Check if the keyword is already in the mapping
     if keyword in keyword_mapping:
         return keyword_mapping[keyword]
 
-    # Find the most similar existing keyword
     for existing_keyword in keyword_mapping:
         if fuzz.ratio(keyword, existing_keyword) >= 80:
             return keyword_mapping[existing_keyword]
 
-    # If no similar keyword is found, set the keyword as its own umbrella term
     keyword_mapping[keyword] = keyword
 
     return keyword
@@ -129,13 +126,10 @@ def get_keywords_and_counts_basic(index_links):
                                 keywords[current_keyword][current_year] = 1
                             else:
                                 keywords[current_keyword][current_year] += 1
-    # Flatten the list of keywords from all papers
     all_keywords = list(set(k for ks in papers.values() for k in ks))
 
-    # Determine the threshold for co-occurrence
-    threshold = 3  # Adjust this value as per your requirement
+    threshold = 3
 
-    # Find pairs of keywords that co-occur more than the threshold
     cooccurrences = Counter()
     for ks in papers.values():
         keyword_combinations = combinations(ks, 2)
@@ -143,13 +137,18 @@ def get_keywords_and_counts_basic(index_links):
 
     frequent_pairs = {pair: count for pair, count in cooccurrences.items() if count >= threshold}
 
-    # Sort the frequent pairs by frequency in descending order
     sorted_pairs = sorted(frequent_pairs.items(), key=lambda x: x[1], reverse=True)
 
     return keywords, sorted_pairs
 
 
 def plot_keywords(keyword_dict, top_n):
+    """
+    creates a bar graph that visualizes the number of mentions for a given dict of keywords
+    can be limited to only show the top n keywords by overall mentions
+    :param keyword_dict:
+    :param top_n:
+    """
     pd.options.plotting.backend = "plotly"
     matplotlib.style.use('tableau-colorblind10')
     top = dict(sorted(keyword_dict.items(), key=lambda x: sum(x[1].values()), reverse=True)[:top_n])
@@ -193,7 +192,6 @@ def group_keys(keyword_dict):
     :param keyword_dict: given dictionary
     :return: returns a list of lists, the latter contain a group of keywords
     """
-    import time
     groups = list()
     for first_key in keyword_dict.keys():
         for group in groups:
@@ -209,6 +207,12 @@ def group_keys(keyword_dict):
 
 
 def calculate_grouped_amounts(keyword_dict, grouped_keywords):
+    """
+    summarizes all values in a given dict for all keywords in a group
+    :param keyword_dict: input dict
+    :param grouped_keywords: keyword groups
+    :return: grouped and summarizes dict
+    """
     group_dict = dict()
     for group in grouped_keywords:
         for keyword in group:
@@ -225,7 +229,12 @@ def calculate_grouped_amounts(keyword_dict, grouped_keywords):
 
 
 def process_pair_keywords(keywords, pair_frequencies):
-    test = pair_frequencies.copy()
+    """
+    creates a dict of keyword pairs, their frequencies together and alone
+    :param keywords:
+    :param pair_frequencies:
+    :return: resulting list of keyword pairs
+    """
     sum1 = 0
     sum2 = 0
     for i, (pair, frequency) in enumerate(pair_frequencies):
@@ -242,32 +251,28 @@ def process_pair_keywords(keywords, pair_frequencies):
 
     duplicate_free_pairs = {}
 
-    # Iterate over the data list
     for pair, frequency, sums in pair_frequencies:
-        # Check if the pair exists in the combined_data dictionary
         if pair in duplicate_free_pairs:
-            # If the pair exists, add the frequency to the existing value
             duplicate_free_pairs[pair][0] += frequency
-            # Update the sums
             assert(duplicate_free_pairs[pair][1] == sums)
         else:
-            # If the pair doesn't exist, create a new key-value pair
             duplicate_free_pairs[pair] = [frequency, sums]
 
-    # Convert the dictionary back to a list of pairs
     duplicate_free_pairs = [(pair, frequency, sums) for pair, (frequency, sums) in duplicate_free_pairs.items()]
     duplicate_free_pairs.sort(key=lambda x: x[1], reverse=True)
     return duplicate_free_pairs
 
 
 def plot_map(pair_frequencies):
+    """
+    creates a force-directed graph
+    :param pair_frequencies: list that contains keyword pairs and their frequencies
+    """
     with open("pair_frequencies.pkl", "wb") as f:
         pickle.dump(pair_frequencies, f)
     import networkx as nx
 
-    # Create an empty graph
     graph = nx.Graph()
-    # Add edges with pair frequencies as an attribute
     for (keyword1, keyword2), frequency, (sum1, sum2) in pair_frequencies:
         k1 = keyword1[0].upper() + keyword1[1:]
         k2 = keyword2[0].upper() + keyword2[1:]
@@ -275,13 +280,10 @@ def plot_map(pair_frequencies):
         graph.add_node(k2, weight=sum2*0.5)
         graph.add_edge(k1, k2, frequency=frequency)
 
-    # Define node positions for the force-directed graph
     layout = nx.spring_layout(graph)
 
-    # Extract node positions
     node_positions = {node: (pos[0], pos[1]) for node, pos in layout.items()}
 
-    # Define edge traces
     edge_traces = []
     for edge in graph.edges():
         x0, y0 = node_positions[edge[0]]
@@ -342,7 +344,6 @@ def plot_map(pair_frequencies):
     # Show the graph
     figure.show()
     figure.write_html("keyword_frequency_and_relation_map.html")
-    return pair_frequencies
 
 
 def main():
@@ -360,12 +361,15 @@ def main():
     print("Keys saved by grouping: ", len(keyword_dict.keys()) - len(grouped_keyword_dict.keys()))
     plot_keywords(grouped_keyword_dict, 100)
     grouped_pair_frequencies = process_pair_keywords(grouped_keyword_dict, sorted_frequency_pairs)
-    #for i in range(10):
     plot_map(grouped_pair_frequencies)
     plot_frequency_pairs(grouped_pair_frequencies)
 
 
 def plot_frequency_pairs(sorted_frequency_pairs):
+    """
+    creates a graph that shows keyword pairs and their frequencies in a scatter plot
+    :param sorted_frequency_pairs: keyword pairs and frequencies in a sorted structure
+    """
     keywords = [f"{pair[0][0]}, {pair[0][1]}" for pair in sorted_frequency_pairs]
     frequencies = [pair[1] for pair in sorted_frequency_pairs]
     with open("keywords_for_graph.pkl", 'wb') as f:
