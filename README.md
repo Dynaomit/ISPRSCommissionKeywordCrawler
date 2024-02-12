@@ -1,0 +1,1 @@
+This crawler is a script to get all commission/conference keywords from the ISPRS archive website and visualize them in a bar graph for overall mentions and a force-directed map for relative connections between the keywords.
