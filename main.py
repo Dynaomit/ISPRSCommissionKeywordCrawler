@@ -1,3 +1,5 @@
+__author__ = "Timo Kullmann"
+
 import pickle
 import re
 from itertools import combinations
